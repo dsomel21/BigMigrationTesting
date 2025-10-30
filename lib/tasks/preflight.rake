@@ -17,9 +17,26 @@ namespace :db do
       binlog_format = conn.select_value("SELECT @@GLOBAL.binlog_format") rescue 'N/A'
       log_bin_trust = conn.select_value("SELECT @@GLOBAL.log_bin_trust_function_creators") rescue 'N/A'
       read_only = conn.select_value("SELECT @@GLOBAL.read_only") rescue 'N/A'
+      innodb_version = conn.select_value("SELECT @@innodb_version") rescue 'N/A'
+      default_engine = conn.select_value("SELECT @@GLOBAL.default_storage_engine") rescue 'N/A'
+      innodb_file_per_table = conn.select_value("SELECT @@innodb_file_per_table") rescue 'N/A'
+      flush_at_trx_commit = conn.select_value("SELECT @@innodb_flush_log_at_trx_commit") rescue 'N/A'
+      sync_binlog = conn.select_value("SELECT @@sync_binlog") rescue 'N/A'
+
+      innodb_engine = conn.select_all(<<~SQL).to_a.first rescue nil
+        SELECT ENGINE, SUPPORT, TRANSACTIONS, XA, SAVEPOINTS, COMMENT
+        FROM information_schema.ENGINES
+        WHERE ENGINE='InnoDB'
+      SQL
+
       puts "MySQL version: #{version}"
       puts "Database: #{db_name}"
+      puts "default_storage_engine: #{default_engine} | innodb_version: #{innodb_version}"
       puts "binlog_format: #{binlog_format} | log_bin_trust_function_creators: #{log_bin_trust} | read_only: #{read_only}"
+      puts "innodb_file_per_table: #{innodb_file_per_table} | innodb_flush_log_at_trx_commit: #{flush_at_trx_commit} | sync_binlog: #{sync_binlog}"
+      if innodb_engine
+        puts "InnoDB engine: support=#{innodb_engine['SUPPORT']} | transactions=#{innodb_engine['TRANSACTIONS']} | xa=#{innodb_engine['XA']} | savepoints=#{innodb_engine['SAVEPOINTS']}"
+      end
     rescue => e
       puts "Server diagnostics error: #{e.class}: #{e.message}"
     end
@@ -51,6 +68,15 @@ namespace :db do
       engine = tbl['ENGINE']
       puts "-" * 80
       puts "Table: #{table} | Engine: #{engine}"
+      # Table status basics
+      begin
+        status = conn.select_all("SHOW TABLE STATUS LIKE #{quoted_table}").to_a.first
+        if status
+          puts "row_format: #{status['Row_format']} | rows(est): #{status['Rows']} | data_len: #{status['Data_length']} | index_len: #{status['Index_length']}"
+        end
+      rescue => e
+        # ignore
+      end
 
       # Primary key
       pk_cols = conn.select_all(<<~SQL).to_a
@@ -96,5 +122,6 @@ namespace :db do
     puts "=" * 80
   end
 end
+
 
 
